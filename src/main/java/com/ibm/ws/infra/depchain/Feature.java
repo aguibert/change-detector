@@ -1,7 +1,6 @@
 package com.ibm.ws.infra.depchain;
 
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashSet;
@@ -23,8 +22,9 @@ public class Feature {
 
     private final Set<String> enablesFeatures = new HashSet<>();
     private final Set<String> bundles = new HashSet<>();
+    private final Set<String> files = new HashSet<>();
 
-    public Feature(String manifestFile) throws FileNotFoundException, IOException {
+    public Feature(String manifestFile) throws IOException {
         Manifest mf = ManifestProcessor.parseManifest(new FileInputStream(manifestFile));
         rawAttrs = mf.getMainAttributes();
         shortName = rawAttrs.getValue("IBM-ShortName");
@@ -38,12 +38,22 @@ public class Feature {
         // Parse included bundles and features
         Map<String, Map<String, String>> content = ManifestHeaderProcessor.parseImportString(rawAttrs.getValue("Subsystem-Content"));
         for (Entry<String, Map<String, String>> e : content.entrySet()) {
+            String key = e.getKey();
             String type = e.getValue().get("type");
-            if ("osgi.subsystem.feature".equals(type))
-                enablesFeatures.add(e.getKey());
+            if (type == null)
+                bundles.add(key);
+            else if ("osgi.subsystem.feature".equals(type) || "jar".equals(type))
+                enablesFeatures.add(key);
+            else if ("file".equals(type))
+                files.add(key);
             else
-                bundles.add(e.getKey());
+                throw new IllegalStateException("Found unknown content: type=" + type + "  " + e.getKey() + "   " + e.getValue());
         }
+    }
+
+    public boolean isPublic() {
+        // Don't consider install bundles like 'com.ibm.websphere.appserver.webProfile8Bundle' to be public features
+        return shortName != null && !shortName.endsWith("Bundle");
     }
 
     public String getShortName() {
@@ -65,7 +75,7 @@ public class Feature {
     @Override
     public String toString() {
         if (ChangeDetector.DEBUG)
-            return symbolicName + "\n  features=" + enablesFeatures + "\n  bundles= " + bundles;
+            return "bsn=" + symbolicName + "\n  features=" + enablesFeatures + "\n  bundles= " + bundles;
         return "{ " + (shortName == null ? "" : ("shortName=" + shortName + ", ")) +
                "symbolicName=" + symbolicName +
                ", enables=" + enablesFeatures +
