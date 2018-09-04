@@ -3,14 +3,16 @@ package com.ibm.ws.infra.depchain;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
-import java.util.regex.Pattern;
 
+import org.apache.aries.util.manifest.ManifestHeaderProcessor;
+import org.apache.aries.util.manifest.ManifestHeaderProcessor.NameValuePair;
 import org.apache.aries.util.manifest.ManifestProcessor;
 
 public class Feature {
@@ -26,9 +28,22 @@ public class Feature {
         Manifest mf = ManifestProcessor.parseManifest(new FileInputStream(manifestFile));
         rawAttrs = mf.getMainAttributes();
         shortName = rawAttrs.getValue("IBM-ShortName");
-        symbolicName = rawAttrs.getValue("Subsystem-SymbolicName");
+        NameValuePair bsn = ManifestHeaderProcessor.parseBundleSymbolicName(rawAttrs.getValue("Subsystem-SymbolicName"));
+        symbolicName = bsn.getName();
         if (symbolicName == null || symbolicName.isEmpty())
             throw new IllegalArgumentException("Empty Subsystem-SymbolicName for manifest file: " + manifestFile);
+
+        // TODO auto features
+
+        // Parse included bundles and features
+        Map<String, Map<String, String>> content = ManifestHeaderProcessor.parseImportString(rawAttrs.getValue("Subsystem-Content"));
+        for (Entry<String, Map<String, String>> e : content.entrySet()) {
+            String type = e.getValue().get("type");
+            if ("osgi.subsystem.feature".equals(type))
+                enablesFeatures.add(e.getKey());
+            else
+                bundles.add(e.getKey());
+        }
     }
 
     public String getShortName() {
@@ -39,52 +54,21 @@ public class Feature {
         return symbolicName;
     }
 
-    public List<String> getEnabledFeatures() {
-        return enables;
+    public Set<String> getEnabledFeatures() {
+        return Collections.unmodifiableSet(enablesFeatures);
     }
 
-    public List<String> getInclude() {
-        return includes;
-    }
-
-//    (&amp;(type=osgi.subsystem.feature)(osgi.identity=com.ibm.websphere.appserver.transaction-1.2))</autoProvision>
-//    (&amp;(type=osgi.subsystem.feature)(osgi.identity=com.ibm.websphere.appserver.iioptransport-1.0))</autoProvision>
-    public boolean isProvisioned(Map<String, Feature> featureMap, Set<String> installedFeatures) {
-        if (isProvisioned != null)
-            return isProvisioned;
-        if (type != Type.AUTO_FEATURE) {
-            isProvisioned = Boolean.TRUE;
-            return isProvisioned;
-        }
-
-        // Must be an auto feature, check if required features are enabled
-        for (String conditionFeature : autoProvision) {
-            boolean anyOf = conditionFeature.contains("|");
-            boolean isProvisioned = !anyOf;
-            for (String identity : conditionFeature.split("osgi.identity=")) {
-                int trimAt = identity.indexOf(')');
-                if (trimAt < 1)
-                    continue;
-                identity = identity.substring(0, trimAt);
-                if (Pattern.matches("[\\-\\w\\.]+", identity)) {
-                    boolean installed = installedFeatures.contains(identity.toLowerCase());
-                    if (anyOf)
-                        isProvisioned |= installed;
-                    else
-                        isProvisioned &= installed;
-                }
-            }
-            if (!isProvisioned)
-                return false;
-        }
-        return true;
+    public Set<String> getBundles() {
+        return Collections.unmodifiableSet(bundles);
     }
 
     @Override
     public String toString() {
+        if (ChangeDetector.DEBUG)
+            return symbolicName + "\n  features=" + enablesFeatures + "\n  bundles= " + bundles;
         return "{ " + (shortName == null ? "" : ("shortName=" + shortName + ", ")) +
                "symbolicName=" + symbolicName +
-               ", enables=" + enables +
-               ", includes=" + includes + '}';
+               ", enables=" + enablesFeatures +
+               ", bundles=" + bundles + '}';
     }
 }

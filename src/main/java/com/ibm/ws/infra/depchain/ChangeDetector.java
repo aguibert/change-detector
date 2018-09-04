@@ -1,5 +1,6 @@
 package com.ibm.ws.infra.depchain;
 
+import java.io.File;
 import java.util.HashSet;
 import java.util.Scanner;
 import java.util.Set;
@@ -21,7 +22,7 @@ public class ChangeDetector {
         UNKNOWN
     }
 
-    private static final boolean DEBUG = true;
+    public static final boolean DEBUG = true;
     public static final String OL_ROOT = "C:\\dev\\proj\\open-liberty\\dev\\";
     public static final String WLP_DIR = OL_ROOT + "\\build.image\\wlp";
 
@@ -70,7 +71,14 @@ public class ChangeDetector {
         for (String manifest : modifiedFeatureManifests)
             System.out.println("  " + manifest);
 
-        Feature f = new Feature(WLP_DIR + "/lib/features/com.ibm.websphere.appserver.ejbCore-1.0.mf");
+        File featureDir = new File(WLP_DIR + "/lib/features");
+        Set<Feature> features = new HashSet<>();
+        for (File f : featureDir.listFiles()) {
+            if (f.isFile() && f.getName().endsWith(".mf"))
+                features.add(new Feature(f.getAbsolutePath()));
+        }
+        for (Feature f : features)
+            System.out.println(f);
 
         return fatsToRun;
     }
