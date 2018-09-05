@@ -10,7 +10,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import javax.json.Json;
+import javax.json.JsonArray;
 import javax.json.JsonObject;
+import javax.json.JsonString;
 import javax.json.stream.JsonParser;
 
 import org.apache.http.HttpResponse;
@@ -33,7 +35,8 @@ public class ChangeDetector {
     public static final boolean CACHE_DIFF = true;
     public static final boolean LOCAL_ONLY = false;
     public static final boolean DEBUG = true;
-    public static final String WLP_DIR = "/Users/aguibert/dev/git/WS-CD-Open/dev/build.image/wlp";
+    public static final String WLP_DIR = "C:\\dev\\proj\\open-liberty\\dev\\build.image\\wlp";
+    //public static final String WLP_DIR = "/Users/aguibert/dev/git/WS-CD-Open/dev/build.image/wlp";
     private static final String GIT_FILECHANGE_TOKEN = "diff --git a";
 
     public static void main(String args[]) throws Exception {
@@ -41,7 +44,10 @@ public class ChangeDetector {
         String prURL = "https://github.com/OpenLiberty/open-liberty/pull/4951.diff";
         // TODO auth for GHE
         //String prURL = "https://github.ibm.com/was-liberty/WS-CD-Open/pull/13165.diff";
-        System.out.println("FATs to run: " + new ChangeDetector().getFatsToRun(prURL));
+        Set<String> fatsToRun = new ChangeDetector().getFatsToRun(prURL);
+        System.out.println("Fats to run: ");
+        for (String fat : fatsToRun.stream().sorted().collect(Collectors.toList()))
+            System.out.println("  " + fat);
     }
 
     public Set<String> getFatsToRun(String prURL) throws Exception {
@@ -108,8 +114,11 @@ public class ChangeDetector {
             JsonObject fatMap = parser.getObject();
             Set<String> fatsToRun = new HashSet<>();
             for (String feature : featureSet) {
+                JsonArray fatsForFeature = fatMap.getJsonArray(feature);
+                if (fatsForFeature != null)
+                    for (JsonString fat : fatsForFeature.getValuesAs(JsonString.class))
+                        fatsToRun.add(fat.getString());
                 System.out.println("FATs testing feature " + feature + " are: " + fatMap.getJsonArray(feature));
-                // TODO @AGG leftoff: put array string into set
             }
             if (fatsToRun.isEmpty())
                 return Collections.singleton("all");
