@@ -33,15 +33,20 @@ public class ChangeDetector {
     }
 
     public static final boolean CACHE_DIFF = true;
-    public static final boolean LOCAL_ONLY = false;
+    public static final boolean LOCAL_ONLY = true;
     public static final boolean DEBUG = true;
     public static final String WLP_DIR = "C:\\dev\\proj\\open-liberty\\dev\\build.image\\wlp";
     //public static final String WLP_DIR = "/Users/aguibert/dev/git/WS-CD-Open/dev/build.image/wlp";
     private static final String GIT_FILECHANGE_TOKEN = "diff --git a";
 
     public static void main(String args[]) throws Exception {
+        // 4931 --> unittest-only change
+        // 4771 --> FAT-only change
+        // 4956 --> FAT-infra change
+        // 4947 --> feature-file only change (JPA and JAX-RS)
+        // 4942 --> low-level product code change
         //String prURL = "https://github.com/OpenLiberty/open-liberty/pull/4942.diff";
-        String prURL = "https://github.com/OpenLiberty/open-liberty/pull/4951.diff";
+        String prURL = "https://github.com/OpenLiberty/open-liberty/pull/4947.diff";
         // TODO auth for GHE
         //String prURL = "https://github.ibm.com/was-liberty/WS-CD-Open/pull/13165.diff";
         Set<String> fatsToRun = new ChangeDetector().getFatsToRun(prURL);
@@ -83,6 +88,11 @@ public class ChangeDetector {
             }
         }
 
+        if (modifiedBundles.isEmpty() && modifiedFeatures.isEmpty()) {
+            System.out.println("No product or infra code has been modified.");
+            return fatsToRun.isEmpty() ? Collections.singleton("none") : fatsToRun;
+        }
+
         System.out.println("Modified bundles:");
         for (String bundle : modifiedBundles)
             System.out.println("  " + bundle);
@@ -114,11 +124,11 @@ public class ChangeDetector {
             JsonObject fatMap = parser.getObject();
             Set<String> fatsToRun = new HashSet<>();
             for (String feature : featureSet) {
-                JsonArray fatsForFeature = fatMap.getJsonArray(feature);
+                JsonArray fatsForFeature = fatMap.getJsonArray(feature.toLowerCase());
                 if (fatsForFeature != null)
                     for (JsonString fat : fatsForFeature.getValuesAs(JsonString.class))
                         fatsToRun.add(fat.getString());
-                System.out.println("FATs testing feature " + feature + " are: " + fatMap.getJsonArray(feature));
+                System.out.println("FATs testing feature " + feature + " are: " + fatsForFeature);
             }
             if (fatsToRun.isEmpty())
                 return Collections.singleton("all");
@@ -133,18 +143,19 @@ public class ChangeDetector {
         Set<String> modifiedFiles = new HashSet<>();
 
         if (LOCAL_ONLY) {
-            modifiedFiles.add("dev/com.ibm.ws.anno/src/com/ibm/ws/anno/info/internal/InfoVisitor.java");
+//            modifiedFiles.add("dev/com.ibm.ws.anno/src/com/ibm/ws/anno/info/internal/InfoVisitor.java");
             // TODO: handle projects that don't produce bundles
             // modifiedFiles.add("dev/com.ibm.ws.ejbcontainer.core/src/com/ibm/ws/metadata/ejb/ByteCodeMetaData.java");
-            modifiedFiles.add("dev/com.ibm.ws.ejbcontainer/src/com/ibm/ws/metadata/ejb/ByteCodeMetaData.java");
-            modifiedFiles.add("dev/com.ibm.ws.monitor/src/com/ibm/ws/monitor/internal/MonitoringProxyActivator.java");
-            modifiedFiles.add("dev/com.ibm.ws.monitor/src/com/ibm/ws/monitor/internal/bci/ClassAvailableHookClassAdapter.java");
-            modifiedFiles.add("dev/com.ibm.ws.ras.instrument/src/com/ibm/ws/ras/instrument/internal/bci/DeferConstructorProcessingMethodAdapter.java");
-            modifiedFiles.add("dev/com.ibm.ws.ras.instrument/test/com/ibm/ws/ras/instrument/internal/bci/DeferConstructorProcessingMethodAdapter.java");
-            modifiedFiles.add("dev/com.ibm.ws.ras.instrument_test/test/com/ibm/ws/ras/RasTransformTest.java");
-            modifiedFiles.add("dev/com.ibm.ws.request.probes/src/com/ibm/ws/request/probe/bci/internal/RequestProbeClassVisitor.java");
+//            modifiedFiles.add("dev/com.ibm.ws.ejbcontainer/src/com/ibm/ws/metadata/ejb/ByteCodeMetaData.java");
+//            modifiedFiles.add("dev/com.ibm.ws.monitor/src/com/ibm/ws/monitor/internal/MonitoringProxyActivator.java");
+//            modifiedFiles.add("dev/com.ibm.ws.monitor/src/com/ibm/ws/monitor/internal/bci/ClassAvailableHookClassAdapter.java");
+//            modifiedFiles.add("dev/com.ibm.ws.ras.instrument/src/com/ibm/ws/ras/instrument/internal/bci/DeferConstructorProcessingMethodAdapter.java");
+//            modifiedFiles.add("dev/com.ibm.ws.ras.instrument/test/com/ibm/ws/ras/instrument/internal/bci/DeferConstructorProcessingMethodAdapter.java");
+//            modifiedFiles.add("dev/com.ibm.ws.ras.instrument_test/test/com/ibm/ws/ras/RasTransformTest.java");
+//            modifiedFiles.add("dev/com.ibm.ws.request.probes/src/com/ibm/ws/request/probe/bci/internal/RequestProbeClassVisitor.java");
 //            modifiedFiles.add("dev/fattest.simplicity/bnd.bnd");
-            modifiedFiles.add("dev/com.ibm.websphere.appserver.features/visibility/private/com.ibm.websphere.appserver.ejbCore-1.0.feature");
+//            modifiedFiles.add("dev/com.ibm.websphere.appserver.features/visibility/private/com.ibm.websphere.appserver.ejbCore-1.0.feature");
+            modifiedFiles.add("dev/com.ibm.websphere.appserver.features/visibility/auto/com.ibm.websphere.appserver.beanValidationCDI-2.0.feature");
             return modifiedFiles;
         }
 

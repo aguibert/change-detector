@@ -4,6 +4,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -11,6 +12,7 @@ import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 
 import org.apache.aries.util.manifest.ManifestHeaderProcessor;
+import org.apache.aries.util.manifest.ManifestHeaderProcessor.GenericMetadata;
 import org.apache.aries.util.manifest.ManifestHeaderProcessor.NameValuePair;
 import org.apache.aries.util.manifest.ManifestProcessor;
 
@@ -20,6 +22,7 @@ public class Feature {
     private final String shortName;
     private final String symbolicName;
 
+    private final Set<String> enabledByFeatures;
     private final Set<String> enablesFeatures = new HashSet<>();
     private final Set<String> bundles = new HashSet<>();
     private final Set<String> files = new HashSet<>();
@@ -33,7 +36,23 @@ public class Feature {
         if (symbolicName == null || symbolicName.isEmpty())
             throw new IllegalArgumentException("Empty Subsystem-SymbolicName for manifest file: " + manifestFile);
 
-        // TODO auto features
+        List<GenericMetadata> provisionCapability = ManifestHeaderProcessor.parseCapabilityString(rawAttrs.getValue("IBM-Provision-Capability"));
+        if (provisionCapability == null) {
+            enabledByFeatures = null;
+        } else {
+            enabledByFeatures = new HashSet<>();
+            if (manifestFile.contains("beanValidationCDI-2.0")) {
+                System.out.println("@AGG found auto-feature: " + manifestFile);
+                for (GenericMetadata metadata : provisionCapability) {
+                    String filter = metadata.getDirectives().get("filter");
+                    // TODO LEFTOFF parse auto features
+                    if (filter != null && filter.contains("osgi.identity=")) {
+                        String f = filter.substring(filter.indexOf("osgi.identity="), endIndex)
+                    }
+                    System.out.println("  " + metadata.getDirectives());
+                }
+            }
+        }
 
         // Parse included bundles and features
         Map<String, Map<String, String>> content = ManifestHeaderProcessor.parseImportString(rawAttrs.getValue("Subsystem-Content"));
@@ -54,6 +73,10 @@ public class Feature {
     public boolean isPublic() {
         // Don't consider install bundles like 'com.ibm.websphere.appserver.webProfile8Bundle' to be public features
         return shortName != null && !shortName.endsWith("Bundle");
+    }
+
+    public boolean isAutoFeature() {
+        return enabledByFeatures != null;
     }
 
     public String getShortName() {
