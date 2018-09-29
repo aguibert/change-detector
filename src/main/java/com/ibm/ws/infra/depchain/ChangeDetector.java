@@ -4,7 +4,10 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.PrintWriter;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -13,6 +16,7 @@ import javax.json.Json;
 import javax.json.JsonArray;
 import javax.json.JsonObject;
 import javax.json.JsonString;
+import javax.json.JsonValue;
 import javax.json.stream.JsonParser;
 
 import org.apache.http.HttpResponse;
@@ -32,23 +36,26 @@ public class ChangeDetector {
         UNKNOWN
     }
 
+    // Inputs
+    public static final String WLP_DIR = "C:\\dev\\proj\\open-liberty\\dev\\build.image\\wlp";
+    public static final String FAT_FEAUTRE_DEPS = "src/main/resources/overall-fat-feature-deps.json";
+    public static final String prURL = "https://github.com/OpenLiberty/open-liberty/pull/4947.diff";
+    //public static final String WLP_DIR = "/Users/aguibert/dev/git/WS-CD-Open/dev/build.image/wlp";
+    // 4931 --> unittest-only change
+    // 4771 --> FAT-only change
+    // 4956 --> FAT-infra change
+    // 4947 --> feature-file only change (JPA and JAX-RS)
+    // 4942 --> low-level product code change
+    //String prURL = "https://github.com/OpenLiberty/open-liberty/pull/4942.diff";
+    // TODO auth for GHE
+    //String prURL = "https://github.ibm.com/was-liberty/WS-CD-Open/pull/13165.diff";
+
     public static final boolean CACHE_DIFF = true;
     public static final boolean LOCAL_ONLY = true;
     public static final boolean DEBUG = true;
-    public static final String WLP_DIR = "C:\\dev\\proj\\open-liberty\\dev\\build.image\\wlp";
-    //public static final String WLP_DIR = "/Users/aguibert/dev/git/WS-CD-Open/dev/build.image/wlp";
     private static final String GIT_FILECHANGE_TOKEN = "diff --git a";
 
     public static void main(String args[]) throws Exception {
-        // 4931 --> unittest-only change
-        // 4771 --> FAT-only change
-        // 4956 --> FAT-infra change
-        // 4947 --> feature-file only change (JPA and JAX-RS)
-        // 4942 --> low-level product code change
-        //String prURL = "https://github.com/OpenLiberty/open-liberty/pull/4942.diff";
-        String prURL = "https://github.com/OpenLiberty/open-liberty/pull/4947.diff";
-        // TODO auth for GHE
-        //String prURL = "https://github.ibm.com/was-liberty/WS-CD-Open/pull/13165.diff";
         Set<String> fatsToRun = new ChangeDetector().getFatsToRun(prURL);
         System.out.println("Fats to run: ");
         for (String fat : fatsToRun.stream().sorted().collect(Collectors.toList()))
@@ -100,42 +107,95 @@ public class ChangeDetector {
         for (String manifest : modifiedFeatures)
             System.out.println("  " + manifest);
 
-        FeatureCollection features = new FeatureCollection(WLP_DIR);
+        FeatureCollection knownFeatures = new FeatureCollection(WLP_DIR);
         try (PrintWriter log = new PrintWriter("target/out.log")) {
-            log.print(features.toString());
+            log.print(knownFeatures.toString());
         }
 
-        Set<String> testedFeautres = new HashSet<>();
+        Set<String> effectedFeatures = new HashSet<>();
 //        features.getFeaturesUsingBundle("com.ibm.ws.anno", testedFeautres);
         for (String bundle : modifiedBundles)
-            features.getFeaturesUsingBundle(bundle, testedFeautres);
+            knownFeatures.addFeaturesUsingBundle(bundle, effectedFeatures);
         for (String feature : modifiedFeatures)
-            features.getFeaturesUsingFeature(feature, testedFeautres);
-        testedFeautres = features.publicOnly(testedFeautres);
-        System.out.println("Features impacted by this PR: " + testedFeautres);
+            knownFeatures.addFeaturesUsingFeature(feature, effectedFeatures);
+        //knownFeatures.addEnabledAutoFeatures(effectedFeatures);
+        //effectedFeatures = knownFeatures.filterPublicOnly(effectedFeatures);
+        System.out.println("Features impacted by this PR: " + effectedFeatures);
 
-        return getFATsToRun(testedFeautres);
+        return getFATsToRun(effectedFeatures, knownFeatures);
     }
 
-    public Set<String> getFATsToRun(Set<String> featureSet) {
+    public Set<String> getFATsToRun(Set<String> effectedFeatures, FeatureCollection knownFeatures) {
+        Set<String> fatsToRun = new HashSet<>();
         try {
-            JsonParser parser = Json.createParser(new FileInputStream("src/main/resources/overall-fat-feature-deps.json"));
+            // Read overall-fat-feature-deps.json and create Feature->Bucket and Bucket->Feature mappings
+            Map<String, Set<String>> featureToBucketMap = new HashMap<>();
+            Map<String, Set<String>> bucketToFeatureMap = new HashMap<>();
+            JsonParser parser = Json.createParser(new FileInputStream(FAT_FEAUTRE_DEPS));
             parser.next();
             JsonObject fatMap = parser.getObject();
-            Set<String> fatsToRun = new HashSet<>();
-            for (String feature : featureSet) {
-                JsonArray fatsForFeature = fatMap.getJsonArray(feature.toLowerCase());
-                if (fatsForFeature != null)
-                    for (JsonString fat : fatsForFeature.getValuesAs(JsonString.class))
-                        fatsToRun.add(fat.getString());
-                System.out.println("FATs testing feature " + feature + " are: " + fatsForFeature);
+            for (Entry<String, JsonValue> entry : fatMap.entrySet()) {
+                String feature = entry.getKey().toLowerCase();
+                JsonArray fatsForFeature = entry.getValue().asJsonArray();
+                for (JsonString fatJSON : fatsForFeature.getValuesAs(JsonString.class)) {
+                    String fat = fatJSON.getString();
+                    Set<String> fats = featureToBucketMap.get(feature);
+                    if (fats == null)
+                        featureToBucketMap.put(feature, fats = new HashSet<String>());
+                    fats.add(fat);
+                    Set<String> features = bucketToFeatureMap.get(fat);
+                    if (features == null)
+                        bucketToFeatureMap.put(fat, features = new HashSet<String>());
+                    features.add(feature);
+                }
             }
+//            for (String feature : knownFeatures) {
+//                feature = feature.toLowerCase();
+//                JsonArray fatsForFeature = fatMap.getJsonArray(feature);
+//                if (fatsForFeature != null)
+//                    for (JsonString fatJSON : fatsForFeature.getValuesAs(JsonString.class)) {
+//                        String fat = fatJSON.getString();
+//                        Set<String> fats = featureToBucketMap.get(feature);
+//                        if (fats == null)
+//                            featureToBucketMap.put(feature, fats = new HashSet<String>());
+//                        fats.add(fat);
+//                        Set<String> features = bucketToFeatureMap.get(fat);
+//                        if (features == null)
+//                            bucketToFeatureMap.put(fat, features = new HashSet<String>());
+//                        features.add(feature);
+//                    }
+//            }
+//            System.out.println("Feature -> FAT");
+//            for (Entry<String, Set<String>> e : featureToBucketMap.entrySet())
+//                System.out.println(e);
+//            System.out.println("Feature -> FAT");
+//            for (Entry<String, Set<String>> e : bucketToFeatureMap.entrySet())
+//                System.out.println(e);
+
+            // Determine what buckets enable the effected auto-features
+            Set<String> effectedAutoFeatures = knownFeatures.filterAutoOnly(effectedFeatures);
+            for (String effectedAutoFeature : effectedAutoFeatures) {
+                Feature autoFeature = knownFeatures.get(effectedAutoFeature);
+                for (Entry<String, Set<String>> fatToFeatures : bucketToFeatureMap.entrySet()) {
+                    Set<String> fatEnabledFeatures = new HashSet<>();
+                    for (String featureShortName : fatToFeatures.getValue()) {
+                        Feature f = knownFeatures.getPublic(featureShortName);
+                        if (f != null)
+                            fatEnabledFeatures.add(f.getSymbolicName());
+                    }
+                    if (autoFeature.isCapabilitySatisfied(fatEnabledFeatures)) {
+                        System.out.println("FAT bucket " + fatToFeatures.getKey() + " tests auto-feature " + effectedAutoFeature);
+                        fatsToRun.add(fatToFeatures.getKey());
+                    }
+                }
+            }
+
             if (fatsToRun.isEmpty())
-                return Collections.singleton("all");
+                return runEverything();
             return fatsToRun;
         } catch (FileNotFoundException e) {
             e.printStackTrace();
-            return Collections.singleton("all");
+            return runEverything();
         }
     }
 
@@ -199,9 +259,7 @@ public class ChangeDetector {
     }
 
     private Set<String> runEverything() {
-        Set<String> s = new HashSet<>();
-        s.add("all");
-        return s;
+        return Collections.singleton("all");
     }
 
     private String getProjectName(String file) {
