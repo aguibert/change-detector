@@ -60,6 +60,7 @@ public class ChangeDetector {
         System.out.println("Fats to run: ");
         for (String fat : fatsToRun.stream().sorted().collect(Collectors.toList()))
             System.out.println("  " + fat);
+        System.out.println("Will run " + fatsToRun.size() + " buckets.");
     }
 
     public Set<String> getFatsToRun(String prURL) throws Exception {
@@ -120,7 +121,9 @@ public class ChangeDetector {
             knownFeatures.addFeaturesUsingFeature(feature, effectedFeatures);
         //knownFeatures.addEnabledAutoFeatures(effectedFeatures);
         //effectedFeatures = knownFeatures.filterPublicOnly(effectedFeatures);
-        System.out.println("Features impacted by this PR: " + effectedFeatures);
+        System.out.println("Features impacted:");
+        for (String effectedFeature : effectedFeatures)
+            System.out.println("  " + effectedFeature);
 
         return getFATsToRun(effectedFeatures, knownFeatures);
     }
@@ -149,28 +152,6 @@ public class ChangeDetector {
                     features.add(feature);
                 }
             }
-//            for (String feature : knownFeatures) {
-//                feature = feature.toLowerCase();
-//                JsonArray fatsForFeature = fatMap.getJsonArray(feature);
-//                if (fatsForFeature != null)
-//                    for (JsonString fatJSON : fatsForFeature.getValuesAs(JsonString.class)) {
-//                        String fat = fatJSON.getString();
-//                        Set<String> fats = featureToBucketMap.get(feature);
-//                        if (fats == null)
-//                            featureToBucketMap.put(feature, fats = new HashSet<String>());
-//                        fats.add(fat);
-//                        Set<String> features = bucketToFeatureMap.get(fat);
-//                        if (features == null)
-//                            bucketToFeatureMap.put(fat, features = new HashSet<String>());
-//                        features.add(feature);
-//                    }
-//            }
-//            System.out.println("Feature -> FAT");
-//            for (Entry<String, Set<String>> e : featureToBucketMap.entrySet())
-//                System.out.println(e);
-//            System.out.println("Feature -> FAT");
-//            for (Entry<String, Set<String>> e : bucketToFeatureMap.entrySet())
-//                System.out.println(e);
 
             // Determine what buckets enable the effected auto-features
             Set<String> effectedAutoFeatures = knownFeatures.filterAutoOnly(effectedFeatures);
@@ -183,15 +164,24 @@ public class ChangeDetector {
                         if (f != null)
                             fatEnabledFeatures.add(f.getSymbolicName());
                     }
-                    if (autoFeature.isCapabilitySatisfied(fatEnabledFeatures)) {
-                        System.out.println("FAT bucket " + fatToFeatures.getKey() + " tests auto-feature " + effectedAutoFeature);
+                    if (autoFeature.isCapabilitySatisfied(fatEnabledFeatures))
                         fatsToRun.add(fatToFeatures.getKey());
-                    }
                 }
             }
 
-            if (fatsToRun.isEmpty())
+            // Determine what buckets enable the effected features
+            for (String effectedPublicFeature : knownFeatures.filterPublicOnly(effectedFeatures)) {
+                Set<String> fatsTestingFeature = featureToBucketMap.get(effectedPublicFeature);
+                if (fatsTestingFeature == null)
+                    continue;
+                System.out.println("Feature " + effectedPublicFeature + " is tested by FATs: " + fatsTestingFeature);
+                fatsToRun.addAll(fatsTestingFeature);
+            }
+
+            if (fatsToRun.isEmpty()) {
+                System.out.println("Did not find any FATs testing this changes. Falling back to running everything.");
                 return runEverything();
+            }
             return fatsToRun;
         } catch (FileNotFoundException e) {
             e.printStackTrace();
@@ -206,16 +196,20 @@ public class ChangeDetector {
 //            modifiedFiles.add("dev/com.ibm.ws.anno/src/com/ibm/ws/anno/info/internal/InfoVisitor.java");
             // TODO: handle projects that don't produce bundles
             // modifiedFiles.add("dev/com.ibm.ws.ejbcontainer.core/src/com/ibm/ws/metadata/ejb/ByteCodeMetaData.java");
-//            modifiedFiles.add("dev/com.ibm.ws.ejbcontainer/src/com/ibm/ws/metadata/ejb/ByteCodeMetaData.java");
-//            modifiedFiles.add("dev/com.ibm.ws.monitor/src/com/ibm/ws/monitor/internal/MonitoringProxyActivator.java");
-//            modifiedFiles.add("dev/com.ibm.ws.monitor/src/com/ibm/ws/monitor/internal/bci/ClassAvailableHookClassAdapter.java");
-//            modifiedFiles.add("dev/com.ibm.ws.ras.instrument/src/com/ibm/ws/ras/instrument/internal/bci/DeferConstructorProcessingMethodAdapter.java");
-//            modifiedFiles.add("dev/com.ibm.ws.ras.instrument/test/com/ibm/ws/ras/instrument/internal/bci/DeferConstructorProcessingMethodAdapter.java");
-//            modifiedFiles.add("dev/com.ibm.ws.ras.instrument_test/test/com/ibm/ws/ras/RasTransformTest.java");
-//            modifiedFiles.add("dev/com.ibm.ws.request.probes/src/com/ibm/ws/request/probe/bci/internal/RequestProbeClassVisitor.java");
-//            modifiedFiles.add("dev/fattest.simplicity/bnd.bnd");
-//            modifiedFiles.add("dev/com.ibm.websphere.appserver.features/visibility/private/com.ibm.websphere.appserver.ejbCore-1.0.feature");
-            modifiedFiles.add("dev/com.ibm.websphere.appserver.features/visibility/auto/com.ibm.websphere.appserver.beanValidationCDI-2.0.feature");
+            //modifiedFiles.add("dev/com.ibm.ws.ejbcontainer/src/com/ibm/ws/metadata/ejb/ByteCodeMetaData.java");
+            //modifiedFiles.add("dev/com.ibm.ws.monitor/src/com/ibm/ws/monitor/internal/MonitoringProxyActivator.java");
+            //modifiedFiles.add("dev/com.ibm.ws.monitor/src/com/ibm/ws/monitor/internal/bci/ClassAvailableHookClassAdapter.java");
+            //modifiedFiles.add("dev/com.ibm.ws.ras.instrument/src/com/ibm/ws/ras/instrument/internal/bci/DeferConstructorProcessingMethodAdapter.java");
+            //modifiedFiles.add("dev/com.ibm.ws.ras.instrument/test/com/ibm/ws/ras/instrument/internal/bci/DeferConstructorProcessingMethodAdapter.java");
+            //modifiedFiles.add("dev/com.ibm.ws.ras.instrument_test/test/com/ibm/ws/ras/RasTransformTest.java");
+            //modifiedFiles.add("dev/com.ibm.ws.request.probes/src/com/ibm/ws/request/probe/bci/internal/RequestProbeClassVisitor.java");
+            //modifiedFiles.add("dev/fattest.simplicity/bnd.bnd");
+            //modifiedFiles.add("dev/com.ibm.websphere.appserver.features/visibility/private/com.ibm.websphere.appserver.ejbCore-1.0.feature");
+            //modifiedFiles.add("dev/com.ibm.websphere.appserver.features/visibility/auto/com.ibm.websphere.appserver.beanValidationCDI-2.0.feature");
+            //modifiedFiles.add("dev/com.ibm.ws.jdbc.4.3/bnd.bnd");
+            //modifiedFiles.add("dev/com.ibm.ws.jdbc.management.j2ee/bnd.bnd");
+            modifiedFiles.add("dev/com.ibm.ws.kernel.service/src/com/ibm/ws/kernel/service/util/JavaInfo.java");
+            //modifiedFiles.add("dev/com.ibm.ws.beanvalidation.v20.cdi/src/com/ibm/ws/beanvalidation/v20/cdi/internal/LibertyValidatorBean.java");
             return modifiedFiles;
         }
 

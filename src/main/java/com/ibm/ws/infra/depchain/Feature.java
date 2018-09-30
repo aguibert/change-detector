@@ -51,7 +51,7 @@ public class Feature {
             String type = e.getValue().get("type");
             if (type == null)
                 bundles.add(key);
-            else if ("osgi.subsystem.feature".equals(type) || "jar".equals(type))
+            else if ("osgi.subsystem.feature".equals(type) || "jar".equals(type) || "boot.jar".equals(type))
                 enablesFeatures.add(key);
             else if ("file".equals(type))
                 files.add(key);

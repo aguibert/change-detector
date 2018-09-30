@@ -14,20 +14,9 @@ public class FeatureCollection {
     private final Map<String, Feature> knownFeatures;
 
     public FeatureCollection(String wlpDir) {
-        File featureDir = new File(wlpDir + "/lib/features");
-        if (!featureDir.exists() || !featureDir.isDirectory())
-            throw new IllegalArgumentException("WLP_DIR did not exist: " + wlpDir);
         Map<String, Feature> knownFeaturesWritable = new HashMap<>();
-        for (File f : featureDir.listFiles()) {
-            if (f.isFile() && f.getName().endsWith(".mf"))
-                try {
-                    Feature feature = new Feature(f.getAbsolutePath());
-                    knownFeaturesWritable.put(feature.getSymbolicName(), feature);
-                } catch (IOException ex) {
-                    // "Should Never Happen"(TM)
-                    ex.printStackTrace();
-                }
-        }
+        knownFeaturesWritable.putAll(discoverFeatureFiles(wlpDir + "/lib/features"));
+        knownFeaturesWritable.putAll(discoverFeatureFiles(wlpDir + "/lib/platform"));
         knownFeatures = Collections.unmodifiableMap(knownFeaturesWritable);
     }
 
@@ -96,6 +85,24 @@ public class FeatureCollection {
             }
         }
         return featureSet;
+    }
+
+    private Map<String, Feature> discoverFeatureFiles(String dir) {
+        File featureDir = new File(dir);
+        if (!featureDir.exists() || !featureDir.isDirectory())
+            throw new IllegalArgumentException("Directory did not exist: " + dir);
+        Map<String, Feature> knownFeaturesWritable = new HashMap<>();
+        for (File f : featureDir.listFiles()) {
+            if (f.isFile() && f.getName().endsWith(".mf"))
+                try {
+                    Feature feature = new Feature(f.getAbsolutePath());
+                    knownFeaturesWritable.put(feature.getSymbolicName(), feature);
+                } catch (IOException ex) {
+                    // "Should Never Happen"(TM)
+                    ex.printStackTrace();
+                }
+        }
+        return knownFeaturesWritable;
     }
 
     @Override
